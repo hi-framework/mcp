@@ -1,0 +1,46 @@
+{
+    "name": "hi/mcp-server",
+    "description": "Model Context Protocol (MCP) Server for PHP - Expose your PHP codebase API to AI assistants",
+    "type": "library",
+    "keywords": ["mcp", "model-context-protocol", "ai", "claude", "api-documentation", "code-analysis"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Hi Framework Team",
+            "email": "qiang.wang@holla.world"
+        }
+    ],
+    "require": {
+        "php": ">=8.2",
+        "ext-json": "*",
+        "ext-tokenizer": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "vimeo/psalm": "^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Hi\\MCP\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Hi\\MCP\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "cs": "php-cs-fixer fix --diff",
+        "psalm": "psalm --show-info=true"
+    },
+    "bin": [
+        "bin/mcp-server"
+    ],
+    "suggest": {
+        "ext-pcntl": "For graceful signal handling (SIGINT, SIGTERM, SIGHUP)"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
