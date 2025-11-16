@@ -1,0 +1,138 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * MCP Server - Model Context Protocol Server for PHP
+ *
+ * Exposes your PHP codebase API to AI assistants like Claude Code
+ *
+ * Usage:
+ *   ./vendor/bin/mcp-server [--src=path] [--cache=path] [--ttl=seconds]
+ *
+ * Claude Code integration:
+ *   claude mcp add my-project ./vendor/bin/mcp-server --src=src
+ */
+
+// Find autoloader
+$autoloadPaths = [
+    __DIR__ . '/../../../autoload.php',      // When installed as dependency
+    __DIR__ . '/../vendor/autoload.php',     // When running from package root
+];
+
+$autoloaderFound = false;
+foreach ($autoloadPaths as $autoloadPath) {
+    if (\file_exists($autoloadPath)) {
+        require_once $autoloadPath;
+        $autoloaderFound = true;
+        break;
+    }
+}
+
+if (! $autoloaderFound) {
+    \fwrite(\STDERR, "Error: Could not find composer autoloader.\n");
+    \fwrite(\STDERR, "Please run 'composer install' first.\n");
+    exit(1);
+}
+
+use Hi\MCP\Analyzer\Cache\AnalysisCache;
+use Hi\MCP\Analyzer\ProjectAnalyzer;
+use Hi\MCP\Server\McpServer;
+use Hi\MCP\Server\Transport\StdioTransport;
+use Hi\MCP\Runtime\SignalHandler;
+
+// Parse command line arguments
+$options = \getopt('', ['src:', 'cache:', 'ttl:', 'help', 'version']);
+
+if (isset($options['version'])) {
+    echo "MCP Server v1.0.0\n";
+    echo "Model Context Protocol Server for PHP\n";
+    exit(0);
+}
+
+if (isset($options['help'])) {
+    echo "MCP Server - Model Context Protocol Server for PHP\n";
+    echo "\n";
+    echo "Usage: mcp-server [options]\n";
+    echo "\n";
+    echo "Options:\n";
+    echo "  --src=PATH     Source directory to analyze (default: src)\n";
+    echo "  --cache=PATH   Cache directory (default: var/cache)\n";
+    echo "  --ttl=SECONDS  Cache TTL in seconds (default: 3600)\n";
+    echo "  --version      Show version information\n";
+    echo "  --help         Show this help message\n";
+    echo "\n";
+    echo "Claude Code integration:\n";
+    echo "  claude mcp add my-project ./vendor/bin/mcp-server --src=src\n";
+    echo "\n";
+    echo "Example:\n";
+    echo "  mcp-server --src=app/src --cache=/tmp/mcp-cache --ttl=7200\n";
+    exit(0);
+}
+
+// Determine project root directory (go up from vendor/bin)
+$rootDir = \getcwd();
+
+// Configuration parameters
+$srcPath = $options['src'] ?? 'src';
+$cachePath = $options['cache'] ?? 'var/cache';
+$cacheTtl = isset($options['ttl']) ? (int) $options['ttl'] : 3600;
+
+// Convert to absolute paths
+if (! \str_starts_with($srcPath, '/')) {
+    $srcPath = $rootDir . '/' . $srcPath;
+}
+
+if (! \str_starts_with($cachePath, '/')) {
+    $cachePath = $rootDir . '/' . $cachePath;
+}
+
+// Validate source directory
+if (! \is_dir($srcPath)) {
+    \fwrite(\STDERR, "Error: Source directory not found: {$srcPath}\n");
+    \fwrite(\STDERR, "Please specify a valid source directory with --src=PATH\n");
+    exit(1);
+}
+
+// Ensure cache directory exists
+if (! \is_dir($cachePath)) {
+    if (! @\mkdir($cachePath, 0o755, true)) {
+        \fwrite(\STDERR, "Warning: Could not create cache directory: {$cachePath}\n");
+        \fwrite(\STDERR, "Running without cache.\n");
+        $cachePath = null;
+    }
+}
+
+// Create and start server
+$analysisCache = $cachePath ? new AnalysisCache($cachePath, $cacheTtl) : null;
+$projectAnalyzer = new ProjectAnalyzer($srcPath, cache: $analysisCache);
+$transport = new StdioTransport();
+
+$server = new McpServer(
+    transport: $transport,
+    projectAnalyzer: $projectAnalyzer,
+    serverName: 'PHP MCP Server',
+    serverVersion: '1.0.0',
+);
+
+// Register signal handling for graceful shutdown
+$signalHandler = new SignalHandler();
+
+$shutdownHandler = static function (int $signal, int $timestamp) use ($server, $transport): void {
+    unset($timestamp);
+    $transport->log("Received signal {$signal}, stopping server...");
+    $server->stop();
+};
+
+$signalHandler->register(\SIGINT, $shutdownHandler);
+$signalHandler->register(\SIGTERM, $shutdownHandler);
+$signalHandler->register(\SIGHUP, $shutdownHandler);
+
+// Start main loop
+$server->run();
+
+// Cleanup
+$signalHandler->cleanup();
+
+exit(0);
