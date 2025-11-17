@@ -74,9 +74,22 @@ if (isset($options['help'])) {
 // Determine project root directory (go up from vendor/bin)
 $rootDir = \getcwd();
 
+// Determine default source path (hi/framework in vendor)
+$scriptRealPath = \realpath(__FILE__);
+$packageRoot = \dirname(\dirname($scriptRealPath)); // hi/mcp-server package root
+
+// Default to hi/framework/src in vendor directory
+if (\str_contains($packageRoot, '/vendor/')) {
+    // Running as vendor dependency: vendor/hi/mcp-server -> vendor/hi/framework/src
+    $defaultSrcPath = \dirname($packageRoot) . '/framework/src';
+} else {
+    // Local development: assume hi/framework is sibling directory
+    $defaultSrcPath = \dirname($packageRoot) . '/framework/src';
+}
+
 // Configuration parameters
-$srcPath = $options['src'] ?? 'src';
-$cachePath = $options['cache'] ?? 'var/cache';
+$srcPath = $options['src'] ?? $defaultSrcPath;
+$cachePath = $options['cache'] ?? null; // Cache disabled by default
 $cacheTtl = isset($options['ttl']) ? (int) $options['ttl'] : 3600;
 
 // Convert to absolute paths
@@ -84,7 +97,7 @@ if (! \str_starts_with($srcPath, '/')) {
     $srcPath = $rootDir . '/' . $srcPath;
 }
 
-if (! \str_starts_with($cachePath, '/')) {
+if ($cachePath !== null && ! \str_starts_with($cachePath, '/')) {
     $cachePath = $rootDir . '/' . $cachePath;
 }
 
@@ -95,8 +108,8 @@ if (! \is_dir($srcPath)) {
     exit(1);
 }
 
-// Ensure cache directory exists
-if (! \is_dir($cachePath)) {
+// Ensure cache directory exists (if cache is enabled)
+if ($cachePath !== null && ! \is_dir($cachePath)) {
     if (! @\mkdir($cachePath, 0o755, true)) {
         \fwrite(\STDERR, "Warning: Could not create cache directory: {$cachePath}\n");
         \fwrite(\STDERR, "Running without cache.\n");
