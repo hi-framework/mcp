@@ -56,19 +56,21 @@ if (isset($options['help'])) {
     echo "Usage: mcp-server [options]\n";
     echo "\n";
     echo "Options:\n";
-    echo "  --mcp-dir=PATH   Directory containing generated documentation (default: .mcp)\n";
+    echo "  --mcp-dir=PATH   Directory containing generated documentation\n";
+    echo "                   (default: package's own .mcp directory)\n";
     echo "  --version        Show version information\n";
     echo "  --help           Show this help message\n";
     echo "\n";
     echo "Setup:\n";
-    echo "  1. Generate documentation first:\n";
-    echo "     mcp-generate --src=vendor/hi/framework/src --docs=vendor/hi/framework/docs --output=.mcp\n";
+    echo "  1. Generate documentation (in package directory):\n";
+    echo "     cd vendor/hi/mcp-server\n";
+    echo "     php bin/mcp-generate --src=../framework/src --docs=../framework/docs --output=.mcp\n";
     echo "\n";
-    echo "  2. Start the server:\n";
-    echo "     mcp-server --mcp-dir=.mcp\n";
+    echo "  2. Start the server (uses package's .mcp by default):\n";
+    echo "     mcp-server\n";
     echo "\n";
     echo "Claude Code integration:\n";
-    echo "  claude mcp add hi-framework ./vendor/bin/mcp-server --mcp-dir=.mcp\n";
+    echo "  claude mcp add hi-framework ./vendor/bin/mcp-server\n";
     echo "\n";
     exit(0);
 }
@@ -76,10 +78,15 @@ if (isset($options['help'])) {
 // Determine project root directory
 $rootDir = \getcwd();
 
-// Configuration parameters
-$mcpDir = $options['mcp-dir'] ?? '.mcp';
+// Determine package root directory
+$packageRoot = \dirname(__DIR__);
 
-// Convert to absolute paths
+// Configuration parameters
+// Default to package's own .mcp directory
+$defaultMcpDir = $packageRoot . '/.mcp';
+$mcpDir = $options['mcp-dir'] ?? $defaultMcpDir;
+
+// Convert to absolute paths (only if relative and not using default)
 if (! \str_starts_with($mcpDir, '/')) {
     $mcpDir = $rootDir . '/' . $mcpDir;
 }
