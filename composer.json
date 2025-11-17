@@ -45,11 +45,5 @@
         "ext-pcntl": "For graceful signal handling (SIGINT, SIGTERM, SIGHUP)"
     },
     "minimum-stability": "stable",
-    "prefer-stable": true,
-    "repositories": [
-        {
-            "type": "composer",
-            "url": "https://packagist.typing-devops.run"
-        }
-    ]
+    "prefer-stable": true
 }
