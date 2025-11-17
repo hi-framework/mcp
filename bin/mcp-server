@@ -6,13 +6,13 @@ declare(strict_types=1);
 /**
  * MCP Server - Model Context Protocol Server for PHP
  *
- * Exposes your PHP codebase API to AI assistants like Claude Code
+ * Serves pre-generated documentation to AI assistants like Claude Code
  *
  * Usage:
- *   ./vendor/bin/mcp-server [--src=path] [--cache=path] [--ttl=seconds]
+ *   ./vendor/bin/mcp-server [--mcp-dir=path]
  *
  * Claude Code integration:
- *   claude mcp add my-project ./vendor/bin/mcp-server --src=src
+ *   claude mcp add my-project ./vendor/bin/mcp-server --mcp-dir=.mcp
  */
 
 // Find autoloader
@@ -36,17 +36,16 @@ if (! $autoloaderFound) {
     exit(1);
 }
 
-use Hi\MCP\Analyzer\Cache\AnalysisCache;
-use Hi\MCP\Analyzer\ProjectAnalyzer;
+use Hi\MCP\Server\DocumentationReader;
 use Hi\MCP\Server\McpServer;
 use Hi\MCP\Server\Transport\StdioTransport;
 use Hi\MCP\Runtime\SignalHandler;
 
 // Parse command line arguments
-$options = \getopt('', ['src:', 'cache:', 'ttl:', 'help', 'version']);
+$options = \getopt('', ['mcp-dir:', 'help', 'version']);
 
 if (isset($options['version'])) {
-    echo "MCP Server v1.0.0\n";
+    echo "MCP Server v2.0.0\n";
     echo "Model Context Protocol Server for PHP\n";
     exit(0);
 }
@@ -57,95 +56,89 @@ if (isset($options['help'])) {
     echo "Usage: mcp-server [options]\n";
     echo "\n";
     echo "Options:\n";
-    echo "  --src=PATH     Source directory to analyze (default: src)\n";
-    echo "  --cache=PATH   Cache directory (default: var/cache)\n";
-    echo "  --ttl=SECONDS  Cache TTL in seconds (default: 3600)\n";
-    echo "  --version      Show version information\n";
-    echo "  --help         Show this help message\n";
+    echo "  --mcp-dir=PATH   Directory containing generated documentation (default: .mcp)\n";
+    echo "  --version        Show version information\n";
+    echo "  --help           Show this help message\n";
+    echo "\n";
+    echo "Setup:\n";
+    echo "  1. Generate documentation first:\n";
+    echo "     mcp-generate --src=vendor/hi/framework/src --docs=vendor/hi/framework/docs --output=.mcp\n";
+    echo "\n";
+    echo "  2. Start the server:\n";
+    echo "     mcp-server --mcp-dir=.mcp\n";
     echo "\n";
     echo "Claude Code integration:\n";
-    echo "  claude mcp add my-project ./vendor/bin/mcp-server --src=src\n";
+    echo "  claude mcp add hi-framework ./vendor/bin/mcp-server --mcp-dir=.mcp\n";
     echo "\n";
-    echo "Example:\n";
-    echo "  mcp-server --src=app/src --cache=/tmp/mcp-cache --ttl=7200\n";
     exit(0);
 }
 
-// Determine project root directory (go up from vendor/bin)
+// Determine project root directory
 $rootDir = \getcwd();
 
-// Determine default source path (hi/framework in vendor)
-$scriptRealPath = \realpath(__FILE__);
-$packageRoot = \dirname(\dirname($scriptRealPath)); // hi/mcp-server package root
-
-// Default to hi/framework/src in vendor directory
-if (\str_contains($packageRoot, '/vendor/')) {
-    // Running as vendor dependency: vendor/hi/mcp-server -> vendor/hi/framework/src
-    $defaultSrcPath = \dirname($packageRoot) . '/framework/src';
-} else {
-    // Local development: assume hi/framework is sibling directory
-    $defaultSrcPath = \dirname($packageRoot) . '/framework/src';
-}
-
 // Configuration parameters
-$srcPath = $options['src'] ?? $defaultSrcPath;
-$cachePath = $options['cache'] ?? null; // Cache disabled by default
-$cacheTtl = isset($options['ttl']) ? (int) $options['ttl'] : 3600;
+$mcpDir = $options['mcp-dir'] ?? '.mcp';
 
 // Convert to absolute paths
-if (! \str_starts_with($srcPath, '/')) {
-    $srcPath = $rootDir . '/' . $srcPath;
+if (! \str_starts_with($mcpDir, '/')) {
+    $mcpDir = $rootDir . '/' . $mcpDir;
 }
 
-if ($cachePath !== null && ! \str_starts_with($cachePath, '/')) {
-    $cachePath = $rootDir . '/' . $cachePath;
-}
-
-// Validate source directory
-if (! \is_dir($srcPath)) {
-    \fwrite(\STDERR, "Error: Source directory not found: {$srcPath}\n");
-    \fwrite(\STDERR, "Please specify a valid source directory with --src=PATH\n");
+// Validate MCP directory
+if (! \is_dir($mcpDir)) {
+    \fwrite(\STDERR, "Error: MCP documentation directory not found: {$mcpDir}\n");
+    \fwrite(\STDERR, "\n");
+    \fwrite(\STDERR, "Please generate documentation first:\n");
+    \fwrite(\STDERR, "  mcp-generate --src=vendor/hi/framework/src --docs=vendor/hi/framework/docs --output=.mcp\n");
     exit(1);
 }
 
-// Ensure cache directory exists (if cache is enabled)
-if ($cachePath !== null && ! \is_dir($cachePath)) {
-    if (! @\mkdir($cachePath, 0o755, true)) {
-        \fwrite(\STDERR, "Warning: Could not create cache directory: {$cachePath}\n");
-        \fwrite(\STDERR, "Running without cache.\n");
-        $cachePath = null;
-    }
+// Check for manifest file
+$manifestPath = $mcpDir . '/manifest.json';
+if (! \file_exists($manifestPath)) {
+    \fwrite(\STDERR, "Error: Manifest file not found: {$manifestPath}\n");
+    \fwrite(\STDERR, "\n");
+    \fwrite(\STDERR, "Please regenerate documentation:\n");
+    \fwrite(\STDERR, "  mcp-generate --src=vendor/hi/framework/src --docs=vendor/hi/framework/docs --output=.mcp\n");
+    exit(1);
 }
 
 // Create and start server
-$analysisCache = $cachePath ? new AnalysisCache($cachePath, $cacheTtl) : null;
-$projectAnalyzer = new ProjectAnalyzer($srcPath, cache: $analysisCache);
-$transport = new StdioTransport();
+try {
+    $docReader = new DocumentationReader($mcpDir);
+    $transport = new StdioTransport();
 
-$server = new McpServer(
-    transport: $transport,
-    projectAnalyzer: $projectAnalyzer,
-    serverName: 'PHP MCP Server',
-    serverVersion: '1.0.0',
-);
+    $frameworkInfo = $docReader->getFrameworkInfo();
 
-// Register signal handling for graceful shutdown
-$signalHandler = new SignalHandler();
+    $server = new McpServer(
+        transport: $transport,
+        docReader: $docReader,
+        serverName: "{$frameworkInfo['name']} MCP Server",
+        serverVersion: '2.0.0',
+    );
 
-$shutdownHandler = static function (int $signal, int $timestamp) use ($server, $transport): void {
-    unset($timestamp);
-    $transport->log("Received signal {$signal}, stopping server...");
-    $server->stop();
-};
+    // Register signal handling for graceful shutdown
+    $signalHandler = new SignalHandler();
 
-$signalHandler->register(\SIGINT, $shutdownHandler);
-$signalHandler->register(\SIGTERM, $shutdownHandler);
-$signalHandler->register(\SIGHUP, $shutdownHandler);
+    $shutdownHandler = static function (int $signal, int $timestamp) use ($server, $transport): void {
+        unset($timestamp);
+        $transport->log("Received signal {$signal}, stopping server...");
+        $server->stop();
+    };
 
-// Start main loop
-$server->run();
+    $signalHandler->register(\SIGINT, $shutdownHandler);
+    $signalHandler->register(\SIGTERM, $shutdownHandler);
+    $signalHandler->register(\SIGHUP, $shutdownHandler);
 
-// Cleanup
-$signalHandler->cleanup();
+    // Start main loop
+    $server->run();
 
-exit(0);
+    // Cleanup
+    $signalHandler->cleanup();
+
+    exit(0);
+} catch (\Throwable $e) {
+    \fwrite(\STDERR, "Fatal error: {$e->getMessage()}\n");
+    \fwrite(\STDERR, "Stack trace:\n{$e->getTraceAsString()}\n");
+    exit(1);
+}

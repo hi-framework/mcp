@@ -13,12 +13,14 @@
     "require": {
         "php": ">=8.2",
         "ext-json": "*",
-        "ext-tokenizer": "*"
+        "ext-tokenizer": "*",
+        "nikic/php-parser": "^5.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^11.0",
         "friendsofphp/php-cs-fixer": "^3.64",
-        "vimeo/psalm": "^6.0"
+        "vimeo/psalm": "^6.0",
+        "hi/framework": "^2.0"
     },
     "autoload": {
         "psr-4": {
@@ -36,11 +38,18 @@
         "psalm": "psalm --show-info=true"
     },
     "bin": [
-        "bin/mcp-server"
+        "bin/mcp-server",
+        "bin/mcp-generate"
     ],
     "suggest": {
         "ext-pcntl": "For graceful signal handling (SIGINT, SIGTERM, SIGHUP)"
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://packagist.typing-devops.run"
+        }
+    ]
 }

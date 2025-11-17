@@ -1,0 +1,152 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+/**
+ * MCP 文档生成器
+ *
+ * 扫描 PHP 源代码并生成 API 文档
+ */
+
+// 查找 autoloader
+$autoloadPaths = [
+    __DIR__ . '/../vendor/autoload.php',           // 作为独立项目
+    __DIR__ . '/../../../autoload.php',            // 作为依赖包
+];
+
+$autoloader = null;
+foreach ($autoloadPaths as $path) {
+    if (file_exists($path)) {
+        $autoloader = $path;
+        break;
+    }
+}
+
+if (null === $autoloader) {
+    fwrite(STDERR, "Error: Could not find composer autoloader.\n");
+    fwrite(STDERR, "Please run 'composer install' first.\n");
+    exit(1);
+}
+
+require $autoloader;
+
+use Hi\MCP\Generator\Config\GeneratorConfig;
+use Hi\MCP\Generator\DocumentationGenerator;
+
+// 解析命令行参数
+$options = getopt('', [
+    'src:',
+    'docs:',
+    'output:',
+    'name:',
+    'version:',
+    'namespace:',
+    'help',
+]);
+
+// 显示帮助
+if (isset($options['help'])) {
+    echo <<<'HELP'
+MCP Documentation Generator
+
+Usage:
+  mcp-generate [options]
+
+Options:
+  --src=PATH        Source code directory to analyze (required)
+  --docs=PATH       Existing documentation directory (optional)
+  --output=PATH     Output directory for generated docs (default: .mcp)
+  --name=NAME       Framework name (default: Hi Framework)
+  --version=VER     Framework version (default: 2.0.0)
+  --namespace=NS    Root namespace (default: Hi)
+  --help            Show this help message
+
+Examples:
+  # Generate docs for Hi Framework
+  mcp-generate --src=vendor/hi/framework/src --docs=vendor/hi/framework/docs --output=.mcp
+
+  # Generate docs for custom project
+  mcp-generate --src=src --output=.mcp --name="My Project" --namespace="App"
+
+HELP;
+    exit(0);
+}
+
+// 验证必需参数
+if (!isset($options['src'])) {
+    fwrite(STDERR, "Error: --src parameter is required.\n");
+    fwrite(STDERR, "Use --help for usage information.\n");
+    exit(1);
+}
+
+$srcPath = $options['src'];
+if (!is_dir($srcPath)) {
+    fwrite(STDERR, "Error: Source directory does not exist: {$srcPath}\n");
+    exit(1);
+}
+
+// 配置
+$docsPath = $options['docs'] ?? '';
+$outputPath = $options['output'] ?? '.mcp';
+$frameworkName = $options['name'] ?? 'Hi Framework';
+$frameworkVersion = $options['version'] ?? '2.0.0';
+$rootNamespace = $options['namespace'] ?? 'Hi';
+
+// 验证文档目录
+if ('' !== $docsPath && !is_dir($docsPath)) {
+    fwrite(STDERR, "Warning: Documentation directory does not exist: {$docsPath}\n");
+    $docsPath = '';
+}
+
+echo "=== MCP Documentation Generator ===\n\n";
+echo "Configuration:\n";
+echo "  Source:      {$srcPath}\n";
+echo "  Docs:        " . ('' !== $docsPath ? $docsPath : '(none)') . "\n";
+echo "  Output:      {$outputPath}\n";
+echo "  Framework:   {$frameworkName} v{$frameworkVersion}\n";
+echo "  Namespace:   {$rootNamespace}\n";
+echo "\n";
+
+// 创建配置
+$config = new GeneratorConfig(
+    sourcePath: realpath($srcPath) ?: $srcPath,
+    docsPath: '' !== $docsPath ? (realpath($docsPath) ?: $docsPath) : '',
+    outputPath: $outputPath,
+    frameworkName: $frameworkName,
+    frameworkVersion: $frameworkVersion,
+    rootNamespace: $rootNamespace,
+);
+
+// 执行生成
+$generator = new DocumentationGenerator($config);
+
+try {
+    $result = $generator->generate();
+
+    echo "\n=== Generation Complete ===\n\n";
+
+    if (!empty($result['errors'])) {
+        echo "Errors encountered:\n";
+        foreach (array_slice($result['errors'], 0, 10) as $error) {
+            if (isset($error['file'])) {
+                echo "  - File: {$error['file']}\n    Error: {$error['error']}\n";
+            } else {
+                echo "  - Class: {$error['class']}\n    Error: {$error['error']}\n";
+            }
+        }
+        if (count($result['errors']) > 10) {
+            echo "  ... and " . (count($result['errors']) - 10) . " more errors\n";
+        }
+        echo "\n";
+    }
+
+    echo "Documentation generated successfully!\n";
+    echo "Output: {$result['output_path']}\n";
+    exit(0);
+
+} catch (Throwable $e) {
+    fwrite(STDERR, "\nFatal error: {$e->getMessage()}\n");
+    fwrite(STDERR, "Stack trace:\n{$e->getTraceAsString()}\n");
+    exit(1);
+}
