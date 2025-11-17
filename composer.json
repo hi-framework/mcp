@@ -13,10 +13,10 @@
     "require": {
         "php": ">=8.2",
         "ext-json": "*",
-        "ext-tokenizer": "*",
-        "nikic/php-parser": "^5.0"
+        "ext-tokenizer": "*"
     },
     "require-dev": {
+        "nikic/php-parser": "^5.0",
         "phpunit/phpunit": "^11.0",
         "friendsofphp/php-cs-fixer": "^3.64",
         "vimeo/psalm": "^6.0",
